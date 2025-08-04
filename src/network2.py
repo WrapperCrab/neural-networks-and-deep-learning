@@ -100,6 +100,11 @@ class Network(object):
         self.weights = [np.random.randn(y, x)/np.sqrt(x)
                         for x, y in zip(self.sizes[:-1], self.sizes[1:])]
 
+        # Velocities used only for momentum-based gradient descent
+        self.velocities_b = [np.zeros((y, 1)) for y in self.sizes[1:]]
+        self.velocities_w = [np.zeros((y, x))
+                        for x, y in zip(self.sizes[:-1], self.sizes[1:])]
+
     def large_weight_initializer(self):
         """Initialize the weights using a Gaussian distribution with mean 0
         and standard deviation 1.  Initialize the biases using a
@@ -316,6 +321,51 @@ class Network(object):
         return evaluation_cost, evaluation_accuracy, \
             training_cost, training_accuracy
 
+    # Added by me as part of problem https://neuralnetworksanddeeplearning.com/chap3.html#problem_713937 
+    def SGD_momentum(self, training_data, epochs, mini_batch_size, eta,
+            lmbda = 0.0,
+            evaluation_data=None,
+            monitor_evaluation_cost=False,
+            monitor_evaluation_accuracy=False,
+            monitor_training_cost=False,
+            monitor_training_accuracy=False,
+            momentum_coefficient=0.5):
+        if evaluation_data: n_data = len(evaluation_data)
+        n = len(training_data)
+        evaluation_cost, evaluation_accuracy = [], []
+        training_cost, training_accuracy = [], []
+        for j in range(epochs):
+            random.shuffle(training_data)
+            mini_batches = [
+                training_data[k:k+mini_batch_size]
+                for k in range(0, n, mini_batch_size)]
+            for mini_batch in mini_batches:
+                self.update_mini_batch_momentum(mini_batch, eta, lmbda, len(training_data), momentum_coefficient)
+
+            print("Epoch %s training complete" % j)
+            if monitor_training_cost:
+                cost = self.total_cost(training_data, lmbda)
+                training_cost.append(cost)
+                print("Cost on training data: {}".format(cost))
+            if monitor_training_accuracy:
+                accuracy = self.accuracy(training_data, convert=True)
+                training_accuracy.append(accuracy)
+                print("Accuracy on training data: {} / {}".format(
+                    accuracy, n))
+            if monitor_evaluation_cost:
+                cost = self.total_cost(evaluation_data, lmbda, convert=True)
+                evaluation_cost.append(cost)
+                print("Cost on evaluation data: {}".format(cost))
+            if monitor_evaluation_accuracy:
+                accuracy = self.accuracy(evaluation_data)
+                evaluation_accuracy.append(accuracy)
+                print("Accuracy on evaluation data: {} / {}".format(
+                    self.accuracy(evaluation_data), n_data))
+            print
+        return evaluation_cost, evaluation_accuracy, \
+            training_cost, training_accuracy
+
+
     def update_mini_batch(self, mini_batch, eta, lmbda, n):
         """Update the network's weights and biases by applying gradient
         descent using backpropagation to a single mini batch.  The
@@ -334,6 +384,24 @@ class Network(object):
                         for w, nw in zip(self.weights, nabla_w)]
         self.biases = [b-(eta/len(mini_batch))*nb
                        for b, nb in zip(self.biases, nabla_b)]
+
+    # Added by me as part of problem https://neuralnetworksanddeeplearning.com/chap3.html#problem_713937 
+    def update_mini_batch_momentum(self, mini_batch, eta, lmbda, n, momentum_coefficient):
+        nabla_vb = [np.zeros(vb.shape) for vb in self.velocities_b]
+        nabla_vw = [np.zeros(vw.shape) for vw in self.velocities_w]
+
+        for x, y in mini_batch:
+            delta_nabla_vb, delta_nabla_vw = self.backprop(x, y)
+            nabla_vb = [nvb+dnvb for nvb, dnvb in zip(nabla_vb, delta_nabla_vb)]
+            nabla_vw = [nvw+dnvw for nvw, dnvw in zip(nabla_vw, delta_nabla_vw)]
+
+        self.velocities_w = [momentum_coefficient*vw - eta*(lmbda/n)*w - (eta/len(mini_batch))*nvw
+                        for w, nvw, vw in zip(self.weights, nabla_vw, self.velocities_w)]
+        self.velocities_b = [momentum_coefficient*vb - (eta/len(mini_batch))*nvb
+                        for b, nvb, vb in zip(self.biases, nabla_vb, self.velocities_b)]
+
+        self.weights = [w + vw for w, vw in zip(self.weights, self.velocities_w)]
+        self.biases = [b + vb for b, vb in zip(self.biases, self.velocities_b)]
 
     def backprop(self, x, y):
         """Return a tuple ``(nabla_b, nabla_w)`` representing the
