@@ -187,6 +187,135 @@ class Network(object):
         return evaluation_cost, evaluation_accuracy, \
             training_cost, training_accuracy
 
+    # Added by me as part of problem https://neuralnetworksanddeeplearning.com/chap3.html#problem_831601
+    def SGD_altered(self, training_data, mini_batch_size, eta,
+            lmbda = 0.0,
+            evaluation_data=None,
+            monitor_evaluation_cost=False,
+            monitor_training_cost=False,
+            monitor_training_accuracy=False,
+            no_improvement_epoch_limit=10):
+        if evaluation_data: n_data = len(evaluation_data)
+        n = len(training_data)
+        evaluation_cost, evaluation_accuracy = [], []
+        training_cost, training_accuracy = [], []
+
+        originalEta = eta
+        bestAccuracy = 0
+        numRoundsWithoutImprovement = 0
+        stillImproving = True
+        currentEpoch = 0
+        while stillImproving:
+            currentEpoch += 1
+            random.shuffle(training_data)
+            mini_batches = [
+                training_data[k:k+mini_batch_size]
+                for k in range(0, n, mini_batch_size)]
+            for mini_batch in mini_batches:
+                self.update_mini_batch(
+                    mini_batch, eta, lmbda, len(training_data))
+            print("\n")
+            print("Epoch %s training complete" % currentEpoch)
+            if monitor_training_cost:
+                cost = self.total_cost(training_data, lmbda)
+                training_cost.append(cost)
+                print("Cost on training data: {}".format(cost))
+            if monitor_training_accuracy:
+                accuracy = self.accuracy(training_data, convert=True)
+                training_accuracy.append(accuracy)
+                print("Accuracy on training data: {} / {}".format(
+                    accuracy, n))
+            if monitor_evaluation_cost:
+                cost = self.total_cost(evaluation_data, lmbda, convert=True)
+                evaluation_cost.append(cost)
+                print("Cost on evaluation data: {}".format(cost))
+            accuracy = self.accuracy(evaluation_data)
+            evaluation_accuracy.append(accuracy)
+            print("Accuracy on evaluation data: {} / {}".format(
+                self.accuracy(evaluation_data), n_data))
+
+            # Check if improvement has been made
+            if evaluation_accuracy[-1] > bestAccuracy:
+                bestAccuracy = evaluation_accuracy[-1]
+                numRoundsWithoutImprovement = 0
+            else:
+                numRoundsWithoutImprovement += 1
+            if numRoundsWithoutImprovement > 0:
+                print("Have not improved in {} epochs".format(numRoundsWithoutImprovement))
+            else:
+                print("Improved this epoch!")
+            # Check if we have reached the epoch limit
+            if numRoundsWithoutImprovement>=no_improvement_epoch_limit:
+                eta *= 0.5
+                print("Learning rate halved")
+                if eta <= (1/128)*originalEta:
+                    stillImproving = False
+            print
+        return evaluation_cost, evaluation_accuracy, \
+            training_cost, training_accuracy
+
+    # Added by me as part of problem https://neuralnetworksanddeeplearning.com/chap3.html#problem_831601
+    def SGD_rate_of_increase(self, training_data, mini_batch_size, eta,
+            lmbda = 0.0,
+            evaluation_data=None,
+            monitor_evaluation_cost=False,
+            monitor_training_cost=False,
+            monitor_training_accuracy=False,
+            compare_epochs = 10,
+            required_error_rate_decrease = 0.01):
+        if evaluation_data: n_data = len(evaluation_data)
+        n = len(training_data)
+        evaluation_cost, evaluation_accuracy = [], []
+        training_cost, training_accuracy = [], []
+
+        stillImproving = True
+        currentEpoch = 0
+        while stillImproving:
+            currentEpoch += 1
+            random.shuffle(training_data)
+            mini_batches = [
+                training_data[k:k+mini_batch_size]
+                for k in range(0, n, mini_batch_size)]
+            for mini_batch in mini_batches:
+                self.update_mini_batch(
+                    mini_batch, eta, lmbda, len(training_data))
+            print("\n")
+            print("Epoch %s training complete" % currentEpoch)
+            if monitor_training_cost:
+                cost = self.total_cost(training_data, lmbda)
+                training_cost.append(cost)
+                print("Cost on training data: {}".format(cost))
+            if monitor_training_accuracy:
+                accuracy = self.accuracy(training_data, convert=True)
+                training_accuracy.append(accuracy)
+                print("Accuracy on training data: {} / {}".format(
+                    accuracy, n))
+            if monitor_evaluation_cost:
+                cost = self.total_cost(evaluation_data, lmbda, convert=True)
+                evaluation_cost.append(cost)
+                print("Cost on evaluation data: {}".format(cost))
+            accuracy = self.accuracy(evaluation_data)
+            evaluation_accuracy.append(accuracy)
+            print("Accuracy on evaluation data: {} / {}".format(
+                self.accuracy(evaluation_data), n_data))
+
+            # Check if error rate has decreased enough
+            if currentEpoch >= 1 + compare_epochs:
+                oldErrorRate = n_data - evaluation_accuracy[-1-compare_epochs]
+                newErrorRate = n_data - evaluation_accuracy[-1]
+                errorDecreaseRate = 1-(newErrorRate/oldErrorRate)
+                if errorDecreaseRate > required_error_rate_decrease:
+                    # Enough improvment has been made to continue
+                    print("Error rate decreased by {} which surpasses the required {}".format(errorDecreaseRate, required_error_rate_decrease))
+                else:
+                    # Not enough improvement has been made to continue
+                    stillImproving = False
+                    print("Error rate decreased by {} which is less than the required {}".format(errorDecreaseRate, required_error_rate_decrease))
+
+            print
+        return evaluation_cost, evaluation_accuracy, \
+            training_cost, training_accuracy
+
     def update_mini_batch(self, mini_batch, eta, lmbda, n):
         """Update the network's weights and biases by applying gradient
         descent using backpropagation to a single mini batch.  The
@@ -285,6 +414,8 @@ class Network(object):
             cost += self.cost.fn(a, y)/len(data)
         cost += 0.5*(lmbda/len(data))*sum(
             np.linalg.norm(w)**2 for w in self.weights)
+        # cost += (lmbda/len(data))*sum(np.sum(w) for w in self.weights) # L1 Regularization Variant 
+
         return cost
 
     def save(self, filename):
